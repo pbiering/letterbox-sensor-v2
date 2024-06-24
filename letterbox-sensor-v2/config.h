@@ -5,11 +5,13 @@
 
 // period for sending, e.g. 30 minutes
 //#define PERIOD 30
-#define PERIOD 30
+#define PERIOD 15
 
 // threshold for proximity sensor values
 #define THRESHOLD 150
 
+// skip serial output (increase battery life)
+#define SERIALQUIET
 
 // if true, use OTAA (not ABP)
 #define USE_OTAA true
