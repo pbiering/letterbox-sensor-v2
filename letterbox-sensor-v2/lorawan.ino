@@ -6,11 +6,13 @@
 // receive callback
 void recvCallback(SERVICE_LORA_RECEIVE_T * data) {
     if (data->BufferSize > 0) {
+      #ifndef SERIALQUIET
         Serial.println("Something received!");
         for (int i = 0; i < data->BufferSize; i++) {
             Serial.printf("%x", data->Buffer[i]);
         }
         Serial.print("\r\n");
+      #endif
     }
 }
 
@@ -43,7 +45,9 @@ void joinCallback(int32_t status) {
 // send callback
 void sendCallback(int32_t status) {
     if (status != RAK_LORAMAC_STATUS_OK) {
+      #ifndef SERIALQUIET
         Serial.println("Sending failed");
+      #endif
     }
 }
 
@@ -51,7 +55,7 @@ void sendCallback(int32_t status) {
 void lorawan_init() {
     // check for network work mode (lorawan)
     if(api.lorawan.nwm.get() != 1) {
-        Serial.printf("Set Node device work mode %s\r\n", api.lorawan.nwm.set(1) ? "Success" : "Fail");
+        Serial.printf("Set Node device work mode %s\r\n", api.lorawan.nwm.set() ? "Success" : "Fail");
         api.system.reboot();
     }
 
@@ -165,6 +169,7 @@ void lorawan_init() {
     }
   
     // check Lorawan status
+  #ifndef SERIALQUIET
     Serial.printf("Duty cycle is %s\r\n", api.lorawan.dcs.get()? "ON" : "OFF");
     Serial.printf("Packet is %s\r\n", api.lorawan.cfm.get()? "CONFIRMED" : "UNCONFIRMED");
     uint8_t assigned_dev_addr[4] = { 0 };
@@ -172,6 +177,7 @@ void lorawan_init() {
     Serial.printf("Device address is %02X%02X%02X%02X\r\n", assigned_dev_addr[0], assigned_dev_addr[1], assigned_dev_addr[2], assigned_dev_addr[3]);
     Serial.printf("Transmit power is %d\r\n", api.lorawan.txp.get());
     Serial.println("");
+  #endif
 
     api.lorawan.registerRecvCallback(recvCallback);
     api.lorawan.registerJoinCallback(joinCallback);
@@ -189,6 +195,10 @@ void lorawan_send(uint8_t * data, int len) {
     Serial.println("");
     **/
 
-    // send the data package via lorawan
-    if (!api.lorawan.send(len, data, FPORT)) { Serial.println("lorawan_send failed"); }
+      // send the data package via lorawan
+    if (!api.lorawan.send(len, data, FPORT)) {
+      #ifndef SERIALQUIET
+       Serial.println("lorawan_send failed");
+      #endif
+    }
 }

@@ -48,3 +48,14 @@
 // FPort (1...200)
 #define FPORT 1
 
+// define extra protocol extensions
+#define EXTRAINFO
+
+// timerdrift in seconds/day
+#define TIMERDRIFT_SECONDS_DAY  -10
+
+// sensor value adjustment depending on battery voltage
+#define s1_voltage_offset 1617
+#define s1_voltage_factor 87
+#define s2_voltage_offset 1800
+#define s2_voltage_factor 69
