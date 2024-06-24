@@ -28,7 +28,7 @@
 // default is 0 ... adjust to your need
 // lower numbers for longer range
 // higher numbers for increased battery life
-#define TXPOWER 7
+#define TXPOWER 4
 
 // ADR
 // if set to true, DATARATE and TXPOWER are overwritten by ADR
