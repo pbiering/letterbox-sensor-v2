@@ -1,22 +1,58 @@
-// Decode decodes an array of bytes into an object.
-//  - fPort contains the LoRaWAN fPort number
-//  - bytes is an array of bytes, e.g. [225, 230, 255, 0]
-//  - variables contains the device variables e.g. {"calibration": "3.5"} (both the key / value are of type string)
-// The function must return an object, e.g. {"temperature": 22.5}
-//function Decode(fPort, bytes, variables) {
-//  return {};
-//}
-function Decode(port, bytes, variables) {
+// The Things Stack - Custom Javascript formatter
+//
+//  for letterbox-sensor-v2
+//
+// 20240624/pbiering: add support for "extra info v1"
+//  add txpower (4-bit)
+//  add datarate (4-bit)
+//  add changed (1-bit)
+//  add period (4-bit)
+//  change voltage resolution to from 12-bit to 8-bit
+// 20251124/pbiering: add support for "extra info v2"
+//  add txpower (4-bit) - unchanged to v1
+//  add datarate (4-bit) - unchanged to v1
+//  add changed (1-bit) - unchanged to v1
+//  add period (4-bit) with resolution of 3 - changed to v1
+//  add threshold (8-bit) to resolution of 16 - changed to v1
+//  revert voltage resolution from 8-bit to 12-bit - changed to v1
+
+function decodeUplink(input) {
   // Decode an uplink message from a buffer
   // (array) of bytes to an object of fields.
   var decoded = {};
 
-  if (bytes[0] === 0) decoded.box = "empty";
-  else decoded.box = "full";
-  decoded.voltage = (((bytes[2]<<8)>>>0) + bytes[1])/1000;
-  decoded.sensor1 = ((bytes[4]<<8)>>>0) + bytes[3];
-  decoded.sensor2 = ((bytes[6]<<8)>>>0) + bytes[5];
-  decoded.threshold = bytes[7];
+  if ((input.bytes[0] & 0x80) === 0x80) decoded.box = "full";
+  else decoded.box = "empty";
+  decoded.voltage = ((input.bytes[2]<<8) + input.bytes[1])/1000;
+  decoded.sensor1 = (input.bytes[4]<<8) + input.bytes[3];
+  decoded.sensor2 = (input.bytes[6]<<8) + input.bytes[5];
+  decoded.threshold = input.bytes[7];
+
+  // extra info
+  if ((input.bytes[0] & 0x30) === 0x10) {
+    decoded.version = input.bytes[0] & 0x0F;
+    if ((input.bytes[0] & 0x0F) === 1) {
+      // extra info encoded version 1
+      decoded.datarate = (decoded.sensor1 & 0xF000)>>>12;
+      decoded.sensor1  &= 0x0FFF;
+      decoded.txpower  = (decoded.sensor2 & 0xF000)>>>12;
+      decoded.sensor2  &= 0x0FFF;
+      decoded.changed  = (input.bytes[0] & 0x40)>>>6;
+      decoded.voltage  = (1500 + input.bytes[1]*10)/1000;
+      decoded.period   = input.bytes[2];
+    }
+    if ((input.bytes[0] & 0x0F) === 2) {
+      // extra info encoded version 2
+      decoded.datarate = (decoded.sensor1 & 0xF000)>>>12;
+      decoded.sensor1  &= 0x0FFF;
+      decoded.txpower  = (decoded.sensor2 & 0xF000)>>>12;
+      decoded.sensor2  &= 0x0FFF;
+      decoded.changed  = (input.bytes[0] & 0x40)>>>6;
+      decoded.voltage  = (input.bytes[1] + (input.bytes[2] & 0x0F) * 256) / 1000;
+      decoded.period   = ((input.bytes[2] & 0xF0)>>>4) * 3;
+      decoded.threshold = input.bytes[7] * 16;
+    }
+  }
 
   return {
     data: decoded,
@@ -24,4 +60,3 @@ function Decode(port, bytes, variables) {
     errors: []
   };
 }
-
