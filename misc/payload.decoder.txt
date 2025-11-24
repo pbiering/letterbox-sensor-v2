@@ -7,12 +7,14 @@
 //  add datarate (4-bit)
 //  add changed (1-bit)
 //  add period (4-bit)
+//  add version (4-bit) of payload
 //  change voltage resolution to from 12-bit to 8-bit
 // 20251124/pbiering: add support for "extra info v2"
 //  add txpower (4-bit) - unchanged to v1
 //  add datarate (4-bit) - unchanged to v1
 //  add changed (1-bit) - unchanged to v1
 //  add period (4-bit) with resolution of 3 - changed to v1
+//  add version (4-bit) of payload - unchanged to v1
 //  add threshold (8-bit) to resolution of 16 - changed to v1
 //  revert voltage resolution from 8-bit to 12-bit - changed to v1
 
@@ -31,7 +33,7 @@ function decodeUplink(input) {
   // extra info
   if ((input.bytes[0] & 0x30) === 0x10) {
     decoded.version = input.bytes[0] & 0x0F;
-    if ((input.bytes[0] & 0x0F) === 1) {
+    if ((decoded.version === 1) {
       // extra info encoded version 1
       decoded.datarate = (decoded.sensor1 & 0xF000)>>>12;
       decoded.sensor1  &= 0x0FFF;
@@ -41,7 +43,7 @@ function decodeUplink(input) {
       decoded.voltage  = (1500 + input.bytes[1]*10)/1000;
       decoded.period   = input.bytes[2];
     }
-    if ((input.bytes[0] & 0x0F) === 2) {
+    if (decoded.version === 2) {
       // extra info encoded version 2
       decoded.datarate = (decoded.sensor1 & 0xF000)>>>12;
       decoded.sensor1  &= 0x0FFF;
