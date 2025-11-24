@@ -38,8 +38,15 @@ void setup() {
   //udrv_adc_set_mode(UDRV_ADC_MODE_3_3);
 
 #ifdef EXTRAINFO
-  // set resolution (uses 10 bit for Sensor and Battery)
+#ifndef EXTRAINFO_V2
+  // set resolution (V1 uses 10 bit for Sensor and Battery)
   analogReadResolution(10);
+#else
+  // set resolution (V2 uses 12 bit for Sensor and Battery)
+  analogReadResolution(12);
+#endif
+#else
+  // set resolution per measure type
 #endif
 
   // blink led once on startup
@@ -87,7 +94,7 @@ void sensor_handler(void *) {
   uint8_t data[data_length];
 
 #ifndef EXTRAINFO
-  // set resolution
+  // set resolution to 10 bit "default"
   analogReadResolution(10);
 #endif
 
@@ -103,7 +110,11 @@ void sensor_handler(void *) {
   digitalWrite(irdiode1,LOW);
   s1=s1/3;
 #ifndef SERIALQUIET
+#ifndef EXTRAINFO_V2
   Serial.printf("Sensor#1 raw AD 10 bit: %d\r\n", s1);
+#else
+  Serial.printf("Sensor#1 raw AD 12 bit: %d\r\n", s1);
+#endif
 #endif
 
   // measure sensor #2
@@ -118,11 +129,16 @@ void sensor_handler(void *) {
   digitalWrite(irdiode2,LOW);
   s2=s2/3;
 #ifndef SERIALQUIET
+#ifndef EXTRAINFO_V2
   Serial.printf("Sensor#2 raw AD 10 bit: %d\r\n", s2);
+#else
+  Serial.printf("Sensor#2 raw AD 12 bit: %d\r\n", s2);
+#endif
 #endif
 
   // battery voltage from external voltage divider
 #ifndef EXTRAINFO
+  // set resolution to 12 bit "default"
   analogReadResolution(12);
 #endif
   delay(25);
@@ -131,14 +147,22 @@ void sensor_handler(void *) {
   // voltage = 1750 + (bat - 1235) * 10; // 2x 3.3MOhm and 12 bit
   voltage = 1550 + (bat - 1040) * 8; // 2x 10MOhm and 12 bit
 #else
+#ifndef EXTRAINFO_V2
   voltage = 1550 + (bat * 4 - 1040) * 8; // 2x 10MOhm and 10 bit
+#else
+  voltage = 1550 + (bat - 1040) * 8; // 2x 10MOhm and 12 bit
+#endif
 #endif
 
 #ifndef SERIALQUIET
 #ifndef EXTRAINFO
   Serial.printf("Voltage  raw AD 12 bit: %d\r\n", bat);
 #else
+#ifndef EXTRAINFO_V2
   Serial.printf("Voltage  raw AD 10 bit: %d\r\n", bat);
+#else
+  Serial.printf("Voltage  raw AD 12 bit: %d\r\n", bat);
+#endif
 #endif
   Serial.printf("Voltage (mV): %d\r\n", voltage);
 #endif
@@ -182,7 +206,11 @@ void sensor_handler(void *) {
   //data[8] = readTemp();
 
 #else
+#ifndef EXTRAINFO_V2
 #define EXTRAINFO_VERSION 0x01 // 0:status+indicator+version 1:batt 2:PERIOD 3+4:sensor1+DATARATE 5+6:sensor2+TXPOWER 7:THRESHOLD
+#else
+#define EXTRAINFO_VERSION 0x02 // 0:status+indicator+version 1:batt 2:bat+PERIOD(>>2) 3+4:sensor1+DATARATE 5+6:sensor2+TXPOWER 7:THRESHOLD(>>4)
+#endif
 #define PRESET_DATARATE ((DATARATE & 0xF) << 4)
 #define PRESET_TXPOWER  ((TXPOWER  & 0xF) << 4)
 #define PRESET_DATA_0  ((EXTRAINFO_VERSION) | 0x10)
@@ -192,10 +220,17 @@ void sensor_handler(void *) {
   //   c              status changed 1:yes 0:no
   //     0 1          flag for EXTRAINFO
   //         v v v v  version EXTRAINFO
-  //                   1:  DATARATE in sensor #1 MSB
-  //                       TXPOWER  in sensor #2 MSB
+  //                   1:  DATARATE in sensor #1 MSB 12-15
+  //                       TXPOWER  in sensor #2 MSB 12-15
   //                       PERIOD   in data[2]
-  //                       bat      only 8-bit
+  //                       bat      only 8-bit (1500V + 0…256*10mV)
+  //                   2:  DATARATE in sensor #1 MSB 12-15
+  //                       TXPOWER  in sensor #2 MSB 12-15
+  //                       PERIOD   in data[2] * 3 (supporting 4 to 60 min) MSB 12-15
+  //                       THRESHOLD 8-bit * 16
+  //                       sensor1  12-bit
+  //                       sensor2  12-bit
+  //                       bat      12-bit (raw)
   data[0] = PRESET_DATA_0;
   if((s1 > THRESHOLD)||(s2 > THRESHOLD)) {
     if (status == 0) {
@@ -211,30 +246,72 @@ void sensor_handler(void *) {
     }
   }
 
+#ifndef EXTRAINFO_V2
   // recalc battery 1500V + 0…256*10mV and store in 8-bit
   // TODO let TTN do the work
   //bat = 1550 + (bat - 1040)*8; // 2x 10MOhm
   //data[1] = ((1550 + (bat - 1040)*8) - 1500) / 10;
   data[1] = (bat << 4) / 5 - 827;
+#else
+  data[1] = (voltage & 0x00FF);
+  data[2] = (voltage & 0x0F00) >> 8;
+#endif
 
   // configured PERIOD in minutes, max 255
-  #if PERIOD > 255
-  #define PRESET_PERIOD 0xFF
-  #else
-  #define PRESET_PERIOD PERIOD
-  #endif
-  data[2] = PRESET_PERIOD;
+#if PERIOD > 255
+#define PRESET_PERIOD 0xFF
+#else
+#define PRESET_PERIOD PERIOD
+#endif
 
-  // encode configured DATARATE (0-15) into sensor (10-bit) #1 MSB 15-12
+#ifdef EXTRAINFO_V2
+  // min 3 / max 45 / granulaty 3
+#if PRESET_PERIOD > 45
+#define PRESET_PERIOD 45
+#endif
+#define PRESET_PERIOD_V2 ((PRESET_PERIOD / 3) << 4)
+  data[2] |= PRESET_PERIOD_V2;
+#ifndef SERIALQUIET
+  Serial.printf("PRESET_PERIOD(v2): %d\r\n", (PRESET_PERIOD_V2 >> 4) * 3);
+#endif
+
+#else // EXTRAINFO_V2
+  data[2] = PRESET_PERIOD;
+#ifndef SERIALQUIET
+  Serial.printf("PRESET_PERIOD(v1): %d\r\n", PRESET_PERIOD);
+#endif
+#endif
+
+  // encode configured DATARATE (0-15) into sensor (10/12-bit) #1 MSB 15-12
   data[3] = (s1 & 0xFF);
   data[4] = ((s1 >> 8) & 0x0F) | PRESET_DATARATE;
 
-  // encode configured TXPOWER (0-15) into sensor (10-bit) #2 MSB 15-12
+  // encode configured TXPOWER (0-15) into sensor (10/12-bit) #2 MSB 15-12
   data[5] = (s2 & 0xFF);
   data[6] = ((s2 >> 8) & 0x0F) | PRESET_TXPOWER;
 
+#ifndef SERIALQUIET
+  Serial.printf("PRESET_TXPOWER: %d\r\n", PRESET_TXPOWER >> 4);
+  Serial.printf("PRESET_DATARATE: %d\r\n", PRESET_DATARATE >> 4);
+#endif
+
   // threshold
-  data[7] = THRESHOLD;
+#ifdef EXTRAINFO_V2
+#define PRESET_THRESHOLD (THRESHOLD >> 4)
+#ifndef SERIALQUIET
+  Serial.printf("PRESET_THRESHOLD(v2): %d\r\n", PRESET_THRESHOLD << 4);
+#endif
+#else
+#define PRESET_THRESHOLD THRESHOLD
+#ifndef SERIALQUIET
+  Serial.printf("PRESET_THRESHOLD(v1): %d\r\n", PRESET_THRESHOLD);
+#endif
+#endif
+  data[7] = PRESET_THRESHOLD; // LSB 0-7
+#endif
+
+#ifndef SERIALQUIET
+  Serial.printf("DATA: %02X %02X %02X %02X %02X %02X %02X %02X\r\n", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 #endif
 
   // send data via lorawan
